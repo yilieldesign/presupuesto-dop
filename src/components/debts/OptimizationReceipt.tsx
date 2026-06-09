@@ -89,6 +89,11 @@ export function OptimizationReceipt({ result }: OptimizationReceiptProps) {
               </span>{" "}
               {formatAllocation(extra)} directo al capital de{" "}
               <span className="font-semibold">{extra.debtName}</span>
+              {result.priorityByDueDate && (
+                <span className="mt-1 block text-xs text-[var(--ios-orange)]">
+                  Prioridad por fecha de pago próxima o vencida
+                </span>
+              )}
             </p>
           </div>
         )}

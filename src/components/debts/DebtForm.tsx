@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, CircleDollarSign, CreditCard } from "lucide-react";
+import { Plus, CircleDollarSign, CreditCard, CalendarClock } from "lucide-react";
 import { DebtIcon } from "./DebtIcon";
-import type { Currency } from "@/types";
+import type { Currency, DebtPaymentPriority } from "@/types";
 import { fromDOP } from "@/lib/currency/convert";
 import { formatMoney, parseMoneyInput } from "@/lib/currency/format";
+import { computeNextPaymentDateFromDay, toDateKey } from "@/lib/budget/fixedExpenses";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { MoneyInput } from "@/components/ui/MoneyInput";
@@ -18,6 +19,8 @@ interface DebtFormProps {
     balance: number;
     interestRate: number;
     minimumPayment: number;
+    paymentPriority: DebtPaymentPriority;
+    nextPaymentDate?: string;
   }) => void;
 }
 
@@ -29,6 +32,11 @@ export function DebtForm({ exchangeRate, onAdd }: DebtFormProps) {
   const [balance, setBalance] = useState("");
   const [rate, setRate] = useState("");
   const [minimum, setMinimum] = useState("");
+  const [paymentPriority, setPaymentPriority] =
+    useState<DebtPaymentPriority>("flexible");
+  const [paymentDate, setPaymentDate] = useState(
+    computeNextPaymentDateFromDay(15)
+  );
 
   const isUsd = currency === "USD";
   const inputCurrency: Currency = isUsd && inputInDOP ? "DOP" : currency;
@@ -51,6 +59,9 @@ export function DebtForm({ exchangeRate, onAdd }: DebtFormProps) {
     setInputInDOP(c === "USD");
     setBalance("");
     setMinimum("");
+    if (c === "USD") {
+      setPaymentPriority("scheduled");
+    }
   };
 
   const handleSubmit = () => {
@@ -64,12 +75,17 @@ export function DebtForm({ exchangeRate, onAdd }: DebtFormProps) {
       balance: balanceNative,
       interestRate: parsedRate,
       minimumPayment: minimumNative,
+      paymentPriority,
+      nextPaymentDate:
+        paymentPriority === "scheduled" ? paymentDate : undefined,
     });
 
     setName("");
     setBalance("");
     setRate("");
     setMinimum("");
+    setPaymentPriority("flexible");
+    setPaymentDate(computeNextPaymentDateFromDay(15));
     setOpen(false);
   };
 
@@ -100,6 +116,58 @@ export function DebtForm({ exchangeRate, onAdd }: DebtFormProps) {
           onChange={(e) => setName(e.target.value)}
           className="w-full rounded-xl border border-[var(--ios-separator)] bg-[var(--ios-bg)] px-4 py-3 text-sm outline-none focus:border-[var(--ios-tint)]"
         />
+
+        <div>
+          <label className="mb-2 block text-xs text-[var(--ios-muted)]">
+            Tipo de deuda
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setPaymentPriority("scheduled")}
+              className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-xs font-semibold transition-colors ${
+                paymentPriority === "scheduled"
+                  ? "bg-[var(--ios-orange)]/15 text-[var(--ios-orange)] ring-1 ring-[var(--ios-orange)]/40"
+                  : "bg-[var(--ios-bg)] text-[var(--ios-muted)]"
+              }`}
+            >
+              <CalendarClock size={18} />
+              Con fecha (tarjeta)
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentPriority("flexible")}
+              className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-xs font-semibold transition-colors ${
+                paymentPriority === "flexible"
+                  ? "bg-[var(--ios-tint)]/15 text-[var(--ios-tint)] ring-1 ring-[var(--ios-tint)]/40"
+                  : "bg-[var(--ios-bg)] text-[var(--ios-muted)]"
+              }`}
+            >
+              <CircleDollarSign size={18} />
+              Al paso (préstamo)
+            </button>
+          </div>
+          <p className="mt-1.5 text-[10px] text-[var(--ios-muted)]">
+            {paymentPriority === "scheduled"
+              ? "Se prioriza por fecha de pago mensual."
+              : "Se paga con bola de nieve o avalancha sin fecha fija."}
+          </p>
+        </div>
+
+        {paymentPriority === "scheduled" && (
+          <div>
+            <label className="mb-1 block text-xs text-[var(--ios-muted)]">
+              Fecha de pago mensual
+            </label>
+            <input
+              type="date"
+              value={paymentDate}
+              min={toDateKey(new Date())}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              className="w-full rounded-xl border border-[var(--ios-separator)] bg-[var(--ios-bg)] px-4 py-3 text-sm outline-none"
+            />
+          </div>
+        )}
 
         <div>
           <label className="mb-2 block text-xs text-[var(--ios-muted)]">
@@ -196,11 +264,21 @@ export function DebtForm({ exchangeRate, onAdd }: DebtFormProps) {
           </div>
           <div>
             <MoneyInput
-              label="Pago mínimo mensual"
+              label={
+                paymentPriority === "scheduled"
+                  ? "Mínimo de este mes"
+                  : "Pago mínimo mensual"
+              }
               value={minimum}
               onChange={setMinimum}
               currency={inputCurrency}
             />
+            {paymentPriority === "scheduled" && (
+              <p className="mt-1 text-[10px] text-[var(--ios-muted)]">
+                En tarjetas el mínimo cambia cada mes — podrás actualizarlo
+                cuando llegue el estado de cuenta.
+              </p>
+            )}
             {isUsd && inputInDOP && parsedMinimum > 0 && (
               <p className="mt-1 text-xs text-[var(--ios-green)]">
                 ≈ {formatMoney(minimumNative, "USD")}/mes en la tarjeta

@@ -5,7 +5,8 @@ import {
   getWeeklyFundTotal,
 } from "@/lib/budget/vitalFund";
 import type { OptimizationResult } from "@/lib/debt/optimizer";
-import type { AppState, Currency, DebtStrategy } from "@/types";
+import type { AppState, Currency, Debt, DebtStrategy } from "@/types";
+import { DebtPaymentAlerts } from "./DebtPaymentAlerts";
 import { Card } from "@/components/ui/Card";
 import { CashOptimizer } from "./CashOptimizer";
 import { DebtForm } from "./DebtForm";
@@ -21,7 +22,16 @@ interface DebtsViewProps {
     balance: number;
     interestRate: number;
     minimumPayment: number;
+    paymentPriority: Debt["paymentPriority"];
+    nextPaymentDate?: string;
   }) => void;
+  onUpdateDebt: (
+    id: string,
+    patch: Partial<
+      Pick<Debt, "nextPaymentDate" | "paymentPriority" | "minimumPayment">
+    >
+  ) => void;
+  onMarkDebtMinimumPaid: (id: string) => void;
   onRemoveDebt: (id: string) => void;
   onStrategyChange: (strategy: DebtStrategy) => void;
   onExchangeRateManual: (rate: number) => void;
@@ -33,6 +43,8 @@ interface DebtsViewProps {
 export function DebtsView({
   state,
   onAddDebt,
+  onUpdateDebt,
+  onMarkDebtMinimumPaid,
   onRemoveDebt,
   onStrategyChange,
   onExchangeRateManual,
@@ -44,6 +56,12 @@ export function DebtsView({
 
   return (
     <div className="space-y-5 pb-4">
+      <DebtPaymentAlerts
+        debts={state.debts}
+        exchangeRate={state.exchangeRate}
+        onMarkMinimumPaid={onMarkDebtMinimumPaid}
+      />
+
       <CashOptimizer
         debts={state.debts}
         strategy={state.debtStrategy}
@@ -76,6 +94,8 @@ export function DebtsView({
         debts={state.debts}
         exchangeRate={state.exchangeRate}
         onRemove={onRemoveDebt}
+        onUpdate={onUpdateDebt}
+        onMarkMinimumPaid={onMarkDebtMinimumPaid}
       />
       <DebtForm exchangeRate={state.exchangeRate} onAdd={onAddDebt} />
     </div>

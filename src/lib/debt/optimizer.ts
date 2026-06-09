@@ -1,6 +1,10 @@
 import { fromDOP, toDOP } from "@/lib/currency/convert";
 import type { Currency, DebtStrategy } from "@/types";
-import { sortDebtsByStrategy, isDebtActive } from "./strategies";
+import {
+  getExtraInjectionPriority,
+  type SchedulableDebt,
+} from "./debtSchedule";
+import { isDebtActive } from "./strategies";
 import type { DebtInput } from "./types";
 import { BALANCE_EPSILON, roundMoney, WEEKS_PER_MONTH } from "./utils";
 
@@ -28,6 +32,8 @@ export interface OptimizeCashOptions {
   weeksPerMonth?: number;
   weeklyFixedFund?: number;
   weekFundSpent?: number;
+  /** Metadatos de fecha de pago por id de deuda. */
+  debtSchedule?: SchedulableDebt[];
 }
 
 export interface OptimizationResult {
@@ -48,6 +54,8 @@ export interface OptimizationResult {
   insufficientForMinimums: boolean;
   priorityDebtId: string | null;
   priorityDebtName: string | null;
+  /** true si la prioridad fue por fecha de pago, no por estrategia. */
+  priorityByDueDate: boolean;
   allocations: CashAllocation[];
 }
 
@@ -81,6 +89,7 @@ function buildEmptyResult(
     insufficientForMinimums: false,
     priorityDebtId: null,
     priorityDebtName: null,
+    priorityByDueDate: false,
     allocations: [],
   };
 }
@@ -163,7 +172,10 @@ export function optimizeCashInjection(
     weeksPerMonth = WEEKS_PER_MONTH,
     weeklyFixedFund = 0,
     weekFundSpent = 0,
+    debtSchedule = [],
   } = options;
+
+  const scheduleById = new Map(debtSchedule.map((d) => [d.id, d]));
 
   if (cashAmount <= 0) return buildEmptyResult(cashAmount, strategy, exchangeRate);
 
@@ -283,8 +295,8 @@ export function optimizeCashInjection(
     minimumPayment: d.minimumPayment,
   }));
 
-  const priority =
-    sortDebtsByStrategy(simDebts, strategy, exchangeRate)[0] ?? null;
+  const { debt: priority, byDueDate: priorityByDueDate } =
+    getExtraInjectionPriority(simDebts, strategy, exchangeRate, scheduleById);
 
   let totalExtraInjection = 0;
 
@@ -338,6 +350,7 @@ export function optimizeCashInjection(
     insufficientForMinimums,
     priorityDebtId: priority?.id ?? null,
     priorityDebtName: priority?.name ?? null,
+    priorityByDueDate,
     allocations,
   };
 }

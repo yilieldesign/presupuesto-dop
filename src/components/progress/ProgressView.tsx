@@ -19,6 +19,7 @@ import {
 } from "@/lib/budget/stats";
 import type { AppState } from "@/types";
 import { Card } from "@/components/ui/Card";
+import { MonthlyCashflowCard } from "./MonthlyCashflowCard";
 
 const CHART_COLORS = [
   "#007aff",
@@ -41,6 +42,8 @@ export function ProgressView({ state }: ProgressViewProps) {
 
   return (
     <div className="space-y-4 pb-4">
+      <MonthlyCashflowCard transactions={state.transactions} />
+
       <Card>
         <h3 className="mb-3 text-sm font-semibold">Reducción de deuda</h3>
         {debtHistory.length < 2 ? (

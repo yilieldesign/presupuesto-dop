@@ -25,6 +25,9 @@ export function AppShell() {
     state,
     hydrated,
     addDebt,
+    updateDebt,
+    markDebtNotified,
+    markDebtMinimumPaid,
     removeDebt,
     setStrategy,
     setWeeklyFundItems,
@@ -32,6 +35,8 @@ export function AppShell() {
     enableAutoExchangeRate,
     refreshExchangeRate,
     addTransaction,
+    updateTransaction,
+    removeTransaction,
     applyOptimization,
     addSavingsGoal,
     removeSavingsGoal,
@@ -51,8 +56,10 @@ export function AppShell() {
     useFixedExpenseNotifications({
       hydrated,
       expenses: state.fixedExpenses,
+      debts: state.debts,
       notificationsEnabled: state.fixedExpenseNotificationsEnabled,
-      onNotified: markFixedExpenseNotified,
+      onExpenseNotified: markFixedExpenseNotified,
+      onDebtNotified: markDebtNotified,
     });
 
   if (!hydrated) {
@@ -100,6 +107,8 @@ export function AppShell() {
             state={state}
             onSetWeeklyFundItems={setWeeklyFundItems}
             onAddTransaction={addTransaction}
+            onUpdateTransaction={updateTransaction}
+            onRemoveTransaction={removeTransaction}
             onResetApp={resetApp}
             onSetUserName={setUserName}
             notificationPermission={notificationPermission}
@@ -117,6 +126,8 @@ export function AppShell() {
           <DebtsView
             state={state}
             onAddDebt={addDebt}
+            onUpdateDebt={updateDebt}
+            onMarkDebtMinimumPaid={markDebtMinimumPaid}
             onRemoveDebt={removeDebt}
             onStrategyChange={setStrategy}
             onExchangeRateManual={setExchangeRateManual}

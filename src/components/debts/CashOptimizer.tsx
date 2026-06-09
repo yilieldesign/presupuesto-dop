@@ -52,6 +52,7 @@ export function CashOptimizer({
       exchangeRate,
       weeklyFixedFund,
       weekFundSpent,
+      debtSchedule: activeDebts,
     });
 
     setResult(optimized);

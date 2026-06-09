@@ -66,6 +66,41 @@ export function addCategorySpent(
   return next;
 }
 
+export function removeCategorySpent(
+  current: Partial<Record<VitalFundCategory, number>>,
+  category: VitalFundCategory,
+  amount: number
+): Partial<Record<VitalFundCategory, number>> {
+  const next = { ...current };
+  const newVal = Math.max(0, (next[category] ?? 0) - amount);
+  if (newVal <= 0) {
+    delete next[category];
+  } else {
+    next[category] = newVal;
+  }
+  return next;
+}
+
+export function adjustExpenseVitalFund(
+  categorySpent: Partial<Record<VitalFundCategory, number>>,
+  items: WeeklyFundItem[],
+  category: ExpenseCategory | undefined,
+  amountDelta: number
+): Partial<Record<VitalFundCategory, number>> {
+  const vitalCat = expenseToVitalCategory(category);
+  if (!vitalCat || amountDelta === 0) return categorySpent;
+
+  const itemCap = items
+    .filter((i) => i.category === vitalCat)
+    .reduce((s, i) => s + i.amount, 0);
+  if (itemCap <= 0) return categorySpent;
+
+  if (amountDelta > 0) {
+    return addCategorySpent(categorySpent, vitalCat, amountDelta, itemCap);
+  }
+  return removeCategorySpent(categorySpent, vitalCat, Math.abs(amountDelta));
+}
+
 /** Reparte una reserva del optimizador entre rubros proporcionalmente. */
 export function distributeVitalReservation(
   items: WeeklyFundItem[],

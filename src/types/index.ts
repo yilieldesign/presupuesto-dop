@@ -57,6 +57,8 @@ export interface WeeklyFundItem {
   amount: number;
 }
 
+export type DebtPaymentPriority = "scheduled" | "flexible";
+
 export interface Debt {
   id: string;
   name: string;
@@ -65,6 +67,15 @@ export interface Debt {
   originalBalance: number;
   interestRate: number;
   minimumPayment: number;
+  /** Mes al que corresponde el mínimo actual (YYYY-MM). */
+  minimumPaymentMonthKey?: string;
+  /** scheduled = tarjeta con fecha mensual; flexible = se paga al paso. */
+  paymentPriority: DebtPaymentPriority;
+  /** Próximo pago obligatorio (YYYY-MM-DD), solo si scheduled. */
+  nextPaymentDate?: string;
+  dayOfMonth?: number;
+  lastPaidMonthKey?: string;
+  lastNotifiedKey?: string;
   createdAt: string;
 }
 

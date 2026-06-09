@@ -5,6 +5,7 @@ import { applyCashOptimization } from "@/lib/debt/optimizer";
 import type { OptimizationResult } from "@/lib/debt/optimizer";
 import {
   addCategorySpent,
+  adjustExpenseVitalFund,
   distributeVitalReservation,
   expenseToVitalCategory,
   getWeekFundSpentTotal,
@@ -15,6 +16,13 @@ import {
   dayOfMonthFromDateKey,
   getMonthKey,
 } from "@/lib/budget/fixedExpenses";
+import {
+  advanceDebtPaymentDate,
+  buildScheduleFields,
+  getDebtMinimumPaidUpdate,
+  shouldAdvanceDebtCycle,
+} from "@/lib/debt/debtSchedule";
+import { toDOP } from "@/lib/currency/convert";
 import { normalizeUserName } from "@/lib/user/displayName";
 import { syncWeekFund } from "@/lib/budget/week";
 import { loadAppState, saveAppState } from "@/lib/storage/localStorage";
@@ -26,6 +34,7 @@ import {
   type AppState,
   type CashInjection,
   type Debt,
+  type DebtPaymentPriority,
   type DebtStrategy,
   type ExpenseCategory,
   type FixedExpense,
@@ -61,17 +70,119 @@ export function useAppState() {
   }, []);
 
   const addDebt = useCallback(
-    (debt: Omit<Debt, "id" | "createdAt" | "originalBalance">) => {
+    (debt: {
+      name: string;
+      currency: Debt["currency"];
+      balance: number;
+      interestRate: number;
+      minimumPayment: number;
+      paymentPriority: DebtPaymentPriority;
+      nextPaymentDate?: string;
+    }) => {
+      const schedule = buildScheduleFields(
+        debt.paymentPriority,
+        debt.nextPaymentDate
+      );
       const newDebt: Debt = {
-        ...debt,
         id: createId(),
+        name: debt.name,
+        currency: debt.currency,
+        balance: debt.balance,
         originalBalance: debt.balance,
+        interestRate: debt.interestRate,
+        minimumPayment: debt.minimumPayment,
+        minimumPaymentMonthKey:
+          debt.paymentPriority === "scheduled" ? getMonthKey() : undefined,
+        ...schedule,
         createdAt: new Date().toISOString(),
       };
       setState((prev) => ({ ...prev, debts: [...prev.debts, newDebt] }));
     },
     []
   );
+
+  const updateDebt = useCallback(
+    (
+      id: string,
+      patch: Partial<
+        Pick<
+          Debt,
+          "nextPaymentDate" | "paymentPriority" | "minimumPayment"
+        >
+      >
+    ) => {
+      setState((prev) => ({
+        ...prev,
+        debts: prev.debts.map((d) => {
+          if (d.id !== id) return d;
+          const paymentPriority = patch.paymentPriority ?? d.paymentPriority;
+          const nextPaymentDate =
+            patch.nextPaymentDate ?? d.nextPaymentDate;
+          const schedule = buildScheduleFields(
+            paymentPriority,
+            nextPaymentDate
+          );
+          const minimumPayment =
+            typeof patch.minimumPayment === "number" &&
+            patch.minimumPayment > 0
+              ? patch.minimumPayment
+              : d.minimumPayment;
+
+          return {
+            ...d,
+            ...schedule,
+            minimumPayment,
+            minimumPaymentMonthKey:
+              patch.minimumPayment !== undefined
+                ? getMonthKey()
+                : d.minimumPaymentMonthKey,
+            lastNotifiedKey: patch.nextPaymentDate ? undefined : d.lastNotifiedKey,
+          };
+        }),
+      }));
+    },
+    []
+  );
+
+  const markDebtNotified = useCallback((id: string, notifyKey: string) => {
+    setState((prev) => ({
+      ...prev,
+      debts: prev.debts.map((d) =>
+        d.id === id ? { ...d, lastNotifiedKey: notifyKey } : d
+      ),
+    }));
+  }, []);
+
+  const markDebtMinimumPaid = useCallback((id: string) => {
+    setState((prev) => {
+      const debt = prev.debts.find((d) => d.id === id);
+      if (!debt) return prev;
+
+      const patch = getDebtMinimumPaidUpdate(debt);
+      if (!patch) return prev;
+
+      const minimumDOP =
+        debt.currency === "USD"
+          ? toDOP(debt.minimumPayment, "USD", prev.exchangeRate)
+          : debt.minimumPayment;
+
+      const transaction: Transaction = {
+        id: createId(),
+        type: "debt_payment",
+        amount: minimumDOP,
+        description: `Mínimo mensual — ${debt.name}`,
+        date: new Date().toISOString(),
+      };
+
+      return {
+        ...prev,
+        debts: prev.debts.map((d) =>
+          d.id === id ? { ...d, ...patch } : d
+        ),
+        transactions: [transaction, ...prev.transactions],
+      };
+    });
+  }, []);
 
   const removeDebt = useCallback((id: string) => {
     setState((prev) => ({
@@ -163,6 +274,85 @@ export function useAppState() {
           ...synced,
           weekFundCategorySpent,
           transactions: [transaction, ...prev.transactions],
+        };
+      });
+    },
+    []
+  );
+
+  const removeTransaction = useCallback((id: string) => {
+    setState((prev) => {
+      const tx = prev.transactions.find((t) => t.id === id);
+      if (!tx || tx.type === "debt_payment") return prev;
+
+      let weekFundCategorySpent = { ...prev.weekFundCategorySpent };
+      if (tx.type === "expense") {
+        weekFundCategorySpent = adjustExpenseVitalFund(
+          weekFundCategorySpent,
+          prev.weeklyFundItems,
+          tx.category,
+          -tx.amount
+        );
+      }
+
+      return {
+        ...prev,
+        weekFundCategorySpent,
+        transactions: prev.transactions.filter((t) => t.id !== id),
+      };
+    });
+  }, []);
+
+  const updateTransaction = useCallback(
+    (
+      id: string,
+      patch: {
+        type: "expense" | "income";
+        amount: number;
+        description: string;
+        category?: ExpenseCategory;
+        date: string;
+      }
+    ) => {
+      setState((prev) => {
+        const old = prev.transactions.find((t) => t.id === id);
+        if (!old || old.type === "debt_payment") return prev;
+
+        let weekFundCategorySpent = { ...prev.weekFundCategorySpent };
+
+        if (old.type === "expense") {
+          weekFundCategorySpent = adjustExpenseVitalFund(
+            weekFundCategorySpent,
+            prev.weeklyFundItems,
+            old.category,
+            -old.amount
+          );
+        }
+
+        if (patch.type === "expense") {
+          weekFundCategorySpent = adjustExpenseVitalFund(
+            weekFundCategorySpent,
+            prev.weeklyFundItems,
+            patch.category,
+            patch.amount
+          );
+        }
+
+        const updated: Transaction = {
+          ...old,
+          type: patch.type,
+          amount: patch.amount,
+          description: patch.description,
+          category: patch.type === "expense" ? patch.category : undefined,
+          date: patch.date,
+        };
+
+        return {
+          ...prev,
+          weekFundCategorySpent,
+          transactions: prev.transactions.map((t) =>
+            t.id === id ? updated : t
+          ),
         };
       });
     },
@@ -500,13 +690,40 @@ export function useAppState() {
           ) as typeof weekFundCategorySpent;
         }
 
+        const monthKey = getMonthKey();
+        const minimumPaidDOP = new Map<string, number>();
+        for (const allocation of result.allocations) {
+          if (allocation.type !== "weekly_minimum") continue;
+          minimumPaidDOP.set(
+            allocation.debtId,
+            (minimumPaidDOP.get(allocation.debtId) ?? 0) + allocation.amountDOP
+          );
+        }
+
         return {
           ...prev,
           ...synced,
           weekFundCategorySpent,
           debts: prev.debts.map((d) => {
             const updated = updatedDebts.find((u) => u.id === d.id);
-            return updated ? { ...d, balance: updated.balance } : d;
+            let next = updated ? { ...d, balance: updated.balance } : d;
+            const paidMin = minimumPaidDOP.get(d.id) ?? 0;
+            if (
+              shouldAdvanceDebtCycle(d, paidMin, prev.exchangeRate) ||
+              (paidMin > 0 &&
+                d.paymentPriority === "scheduled" &&
+                result.priorityByDueDate &&
+                result.priorityDebtId === d.id)
+            ) {
+              const advanced = advanceDebtPaymentDate(d);
+              next = {
+                ...next,
+                lastPaidMonthKey: monthKey,
+                nextPaymentDate: advanced ?? next.nextPaymentDate,
+                lastNotifiedKey: undefined,
+              };
+            }
+            return next;
           }),
           injections: [injection, ...prev.injections],
           transactions: [...newTransactions, ...prev.transactions],
@@ -520,6 +737,9 @@ export function useAppState() {
     state,
     hydrated,
     addDebt,
+    updateDebt,
+    markDebtNotified,
+    markDebtMinimumPaid,
     removeDebt,
     setStrategy,
     setWeeklyFundItems,
@@ -527,6 +747,8 @@ export function useAppState() {
     enableAutoExchangeRate,
     refreshExchangeRate,
     addTransaction,
+    updateTransaction,
+    removeTransaction,
     applyOptimization,
     addSavingsGoal,
     removeSavingsGoal,

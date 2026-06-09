@@ -2,6 +2,7 @@ import {
   computeNextPaymentDateFromDay,
   dayOfMonthFromDateKey,
 } from "@/lib/budget/fixedExpenses";
+import { sanitizeDebtSchedule } from "@/lib/debt/debtSchedule";
 import { normalizeUserName } from "@/lib/user/displayName";
 import {
   DEFAULT_APP_STATE,
@@ -25,6 +26,13 @@ function sanitizeDebts(debts: unknown): Debt[] {
       ...d,
       currency: d.currency === "USD" ? "USD" : "DOP",
       originalBalance: d.originalBalance ?? d.balance ?? 0,
+      ...sanitizeDebtSchedule(d),
+      minimumPaymentMonthKey:
+        typeof d.minimumPaymentMonthKey === "string"
+          ? d.minimumPaymentMonthKey
+          : undefined,
+      lastNotifiedKey:
+        typeof d.lastNotifiedKey === "string" ? d.lastNotifiedKey : undefined,
     }));
 }
 

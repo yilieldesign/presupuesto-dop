@@ -4,6 +4,12 @@ import { useCallback, useEffect, useRef } from "react";
 import { formatDOP } from "@/lib/currency/format";
 import { getRemindersForToday } from "@/lib/budget/fixedExpenses";
 import {
+  getDebtRemindersForToday,
+  type SchedulableDebt,
+} from "@/lib/debt/debtSchedule";
+import { formatMoney } from "@/lib/currency/format";
+import type { Debt } from "@/types";
+import {
   getNotificationPermission,
   isNotificationSupported,
   registerServiceWorker,
@@ -17,8 +23,10 @@ const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 interface UseFixedExpenseNotificationsOptions {
   hydrated: boolean;
   expenses: FixedExpense[];
+  debts: Debt[];
   notificationsEnabled: boolean;
-  onNotified: (expenseId: string, notifyKey: string) => void;
+  onExpenseNotified: (expenseId: string, notifyKey: string) => void;
+  onDebtNotified: (debtId: string, notifyKey: string) => void;
 }
 
 function buildReminderMessage(
@@ -43,22 +51,42 @@ function buildReminderMessage(
   };
 }
 
+function buildDebtReminderMessage(
+  kind: "due_today" | "due_soon",
+  debt: SchedulableDebt
+): { title: string; body: string } {
+  const minimum = formatMoney(debt.minimumPayment, debt.currency);
+  if (kind === "due_today") {
+    return {
+      title: `Pago de deuda hoy: ${debt.name}`,
+      body: `Cubre el mínimo de ${minimum} antes de la fecha límite.`,
+    };
+  }
+  return {
+    title: `Próximo pago: ${debt.name}`,
+    body: `Recuerda el mínimo de ${minimum}. Planifica con anticipación.`,
+  };
+}
+
 export function useFixedExpenseNotifications({
   hydrated,
   expenses,
+  debts,
   notificationsEnabled,
-  onNotified,
+  onExpenseNotified,
+  onDebtNotified,
 }: UseFixedExpenseNotificationsOptions) {
-  const onNotifiedRef = useRef(onNotified);
-  onNotifiedRef.current = onNotified;
+  const onExpenseNotifiedRef = useRef(onExpenseNotified);
+  const onDebtNotifiedRef = useRef(onDebtNotified);
+  onExpenseNotifiedRef.current = onExpenseNotified;
+  onDebtNotifiedRef.current = onDebtNotified;
 
   const runCheck = useCallback(async () => {
     if (!hydrated || !notificationsEnabled) return;
     if (getNotificationPermission() !== "granted") return;
 
-    const reminders = getRemindersForToday(expenses, true);
-
-    for (const reminder of reminders) {
+    const expenseReminders = getRemindersForToday(expenses, true);
+    for (const reminder of expenseReminders) {
       const { expense, kind, notifyKey } = reminder;
       const { title, body } = buildReminderMessage(
         kind,
@@ -68,9 +96,17 @@ export function useFixedExpenseNotifications({
       );
 
       await showFixedExpenseReminder(title, body, `fixed-${expense.id}-${notifyKey}`);
-      onNotifiedRef.current(expense.id, notifyKey);
+      onExpenseNotifiedRef.current(expense.id, notifyKey);
     }
-  }, [hydrated, expenses, notificationsEnabled]);
+
+    const debtReminders = getDebtRemindersForToday(debts, true);
+    for (const reminder of debtReminders) {
+      const { debt, kind, notifyKey } = reminder;
+      const { title, body } = buildDebtReminderMessage(kind, debt);
+      await showFixedExpenseReminder(title, body, `debt-${debt.id}-${notifyKey}`);
+      onDebtNotifiedRef.current(debt.id, notifyKey);
+    }
+  }, [hydrated, expenses, debts, notificationsEnabled]);
 
   useEffect(() => {
     if (!hydrated) return;
