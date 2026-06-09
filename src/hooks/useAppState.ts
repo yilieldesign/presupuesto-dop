@@ -10,6 +10,12 @@ import {
   getWeekFundSpentTotal,
   getWeeklyFundTotal,
 } from "@/lib/budget/vitalFund";
+import {
+  advancePaymentDate,
+  dayOfMonthFromDateKey,
+  getMonthKey,
+} from "@/lib/budget/fixedExpenses";
+import { normalizeUserName } from "@/lib/user/displayName";
 import { syncWeekFund } from "@/lib/budget/week";
 import { loadAppState, saveAppState } from "@/lib/storage/localStorage";
 import { resetAppStorage } from "@/lib/storage/reset";
@@ -21,6 +27,8 @@ import {
   type CashInjection,
   type Debt,
   type DebtStrategy,
+  type ExpenseCategory,
+  type FixedExpense,
   type Transaction,
   type VitalFundCategory,
   type SavingsDeposit,
@@ -161,8 +169,15 @@ export function useAppState() {
     []
   );
 
-  const completeOnboarding = useCallback(() => {
-    update({ onboardingDone: true });
+  const completeOnboarding = useCallback((userName: string) => {
+    update({
+      userName: normalizeUserName(userName),
+      onboardingDone: true,
+    });
+  }, [update]);
+
+  const setUserName = useCallback((userName: string) => {
+    update({ userName: normalizeUserName(userName) });
   }, [update]);
 
   const resetApp = useCallback(() => {
@@ -201,6 +216,157 @@ export function useAppState() {
       savingsDeposits: prev.savingsDeposits.filter((d) => d.goalId !== id),
     }));
   }, []);
+
+  const addFixedExpense = useCallback(
+    (expense: {
+      name: string;
+      amount: number;
+      category: ExpenseCategory;
+      nextPaymentDate: string;
+      reminderEnabled?: boolean;
+      reminderDaysBefore?: number;
+    }) => {
+      const dayOfMonth = dayOfMonthFromDateKey(expense.nextPaymentDate);
+      const item: FixedExpense = {
+        id: createId(),
+        name: expense.name,
+        amount: expense.amount,
+        category: expense.category,
+        nextPaymentDate: expense.nextPaymentDate,
+        dayOfMonth,
+        reminderEnabled: expense.reminderEnabled !== false,
+        reminderDaysBefore: expense.reminderDaysBefore ?? 1,
+        createdAt: new Date().toISOString(),
+      };
+      setState((prev) => ({
+        ...prev,
+        fixedExpenses: [...prev.fixedExpenses, item],
+      }));
+    },
+    []
+  );
+
+  const updateFixedExpense = useCallback(
+    (
+      id: string,
+      patch: Partial<
+        Pick<
+          FixedExpense,
+          | "nextPaymentDate"
+          | "reminderEnabled"
+          | "reminderDaysBefore"
+          | "amount"
+          | "name"
+        >
+      >
+    ) => {
+      setState((prev) => ({
+        ...prev,
+        fixedExpenses: prev.fixedExpenses.map((e) => {
+          if (e.id !== id) return e;
+          const nextPaymentDate = patch.nextPaymentDate ?? e.nextPaymentDate;
+          return {
+            ...e,
+            ...patch,
+            nextPaymentDate,
+            dayOfMonth: patch.nextPaymentDate
+              ? dayOfMonthFromDateKey(nextPaymentDate)
+              : e.dayOfMonth,
+            lastNotifiedKey: patch.nextPaymentDate ? undefined : e.lastNotifiedKey,
+          };
+        }),
+      }));
+    },
+    []
+  );
+
+  const markFixedExpenseNotified = useCallback(
+    (id: string, notifyKey: string) => {
+      setState((prev) => ({
+        ...prev,
+        fixedExpenses: prev.fixedExpenses.map((e) =>
+          e.id === id ? { ...e, lastNotifiedKey: notifyKey } : e
+        ),
+      }));
+    },
+    []
+  );
+
+  const setFixedExpenseNotificationsEnabled = useCallback((enabled: boolean) => {
+    update({ fixedExpenseNotificationsEnabled: enabled });
+  }, [update]);
+
+  const removeFixedExpense = useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      fixedExpenses: prev.fixedExpenses.filter((e) => e.id !== id),
+    }));
+  }, []);
+
+  const markFixedExpensePaid = useCallback(
+    (id: string) => {
+      setState((prev) => {
+        const expense = prev.fixedExpenses.find((e) => e.id === id);
+        if (!expense) return prev;
+
+        const monthKey = getMonthKey();
+        if (expense.lastPaidMonthKey === monthKey) return prev;
+
+        const synced = syncWeekFund(prev);
+        let weekFundCategorySpent = { ...synced.weekFundCategorySpent };
+        const fundTotal = getWeeklyFundTotal(prev.weeklyFundItems);
+
+        if (fundTotal > 0) {
+          const vitalCat = expenseToVitalCategory(expense.category);
+          if (vitalCat) {
+            const itemCap = prev.weeklyFundItems
+              .filter((i) => i.category === vitalCat)
+              .reduce((s, i) => s + i.amount, 0);
+            if (itemCap > 0) {
+              weekFundCategorySpent = addCategorySpent(
+                weekFundCategorySpent,
+                vitalCat,
+                expense.amount,
+                itemCap
+              );
+            }
+          }
+        }
+
+        const transaction: Transaction = {
+          id: createId(),
+          type: "expense",
+          amount: expense.amount,
+          category: expense.category,
+          description: `${expense.name} (gasto fijo)`,
+          date: new Date().toISOString(),
+        };
+
+        const nextPaymentDate = advancePaymentDate(
+          expense.nextPaymentDate,
+          expense.dayOfMonth
+        );
+
+        return {
+          ...prev,
+          ...synced,
+          weekFundCategorySpent,
+          fixedExpenses: prev.fixedExpenses.map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  lastPaidMonthKey: monthKey,
+                  nextPaymentDate,
+                  lastNotifiedKey: undefined,
+                }
+              : e
+          ),
+          transactions: [transaction, ...prev.transactions],
+        };
+      });
+    },
+    []
+  );
 
   const addSavingsDeposit = useCallback(
     (goalId: string, amount: number, note?: string) => {
@@ -365,7 +531,14 @@ export function useAppState() {
     addSavingsGoal,
     removeSavingsGoal,
     addSavingsDeposit,
+    addFixedExpense,
+    updateFixedExpense,
+    removeFixedExpense,
+    markFixedExpensePaid,
+    markFixedExpenseNotified,
+    setFixedExpenseNotificationsEnabled,
     completeOnboarding,
+    setUserName,
     resetApp,
     update,
   };

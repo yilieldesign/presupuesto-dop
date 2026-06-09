@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAppState } from "@/hooks/useAppState";
+import { useFixedExpenseNotifications } from "@/hooks/useFixedExpenseNotifications";
 import type { TabId } from "@/types";
 import { TabBar } from "@/components/layout/TabBar";
 import { BudgetView } from "@/components/budget/BudgetView";
@@ -9,6 +10,7 @@ import { DebtsView } from "@/components/debts/DebtsView";
 import { ProgressView } from "@/components/progress/ProgressView";
 import { SavingsView } from "@/components/savings/SavingsView";
 import { WelcomeScreen } from "@/components/onboarding/WelcomeScreen";
+import { getPersonalGreeting } from "@/lib/user/displayName";
 
 const titles: Record<TabId, string> = {
   budget: "Presupuesto",
@@ -34,9 +36,24 @@ export function AppShell() {
     addSavingsGoal,
     removeSavingsGoal,
     addSavingsDeposit,
+    addFixedExpense,
+    updateFixedExpense,
+    removeFixedExpense,
+    markFixedExpensePaid,
+    markFixedExpenseNotified,
+    setFixedExpenseNotificationsEnabled,
     completeOnboarding,
+    setUserName,
     resetApp,
   } = useAppState();
+
+  const { permission: notificationPermission, enableNotifications } =
+    useFixedExpenseNotifications({
+      hydrated,
+      expenses: state.fixedExpenses,
+      notificationsEnabled: state.fixedExpenseNotificationsEnabled,
+      onNotified: markFixedExpenseNotified,
+    });
 
   if (!hydrated) {
     return (
@@ -46,10 +63,12 @@ export function AppShell() {
     );
   }
 
-  const handleStart = () => {
-    completeOnboarding();
+  const handleStart = (userName: string) => {
+    completeOnboarding(userName);
     setActiveTab("budget");
   };
+
+  const greeting = getPersonalGreeting(state.userName);
 
   return (
     <div className="mx-auto min-h-dvh max-w-lg bg-[var(--ios-bg)]">
@@ -61,7 +80,7 @@ export function AppShell() {
       >
         <div className="px-4 pb-3 pt-2">
           <p className="text-xs font-medium text-[var(--ios-muted)]">
-            Presupuesto DOP
+            {greeting || "Presupuesto DOP"}
           </p>
           <h1 className="text-2xl font-bold tracking-tight">
             {titles[activeTab]}
@@ -82,6 +101,16 @@ export function AppShell() {
             onSetWeeklyFundItems={setWeeklyFundItems}
             onAddTransaction={addTransaction}
             onResetApp={resetApp}
+            onSetUserName={setUserName}
+            notificationPermission={notificationPermission}
+            onAddFixedExpense={addFixedExpense}
+            onUpdateFixedExpense={updateFixedExpense}
+            onRemoveFixedExpense={removeFixedExpense}
+            onMarkFixedExpensePaid={markFixedExpensePaid}
+            onEnableNotifications={enableNotifications}
+            onSetFixedExpenseNotificationsEnabled={
+              setFixedExpenseNotificationsEnabled
+            }
           />
         )}
         {activeTab === "debts" && (

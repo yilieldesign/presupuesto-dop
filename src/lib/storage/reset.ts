@@ -15,6 +15,7 @@ export function isAppEmpty(state: typeof DEFAULT_APP_STATE): boolean {
     state.transactions.length === 0 &&
     state.injections.length === 0 &&
     state.weeklyFundItems.length === 0 &&
-    state.savingsGoals.length === 0
+    state.savingsGoals.length === 0 &&
+    state.fixedExpenses.length === 0
   );
 }

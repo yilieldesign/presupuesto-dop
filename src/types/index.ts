@@ -77,6 +77,27 @@ export interface Transaction {
   date: string;
 }
 
+/** Gasto fijo mensual agendado (alquiler, internet, etc.). */
+export interface FixedExpense {
+  id: string;
+  name: string;
+  amount: number;
+  category: ExpenseCategory;
+  /** Próxima fecha de pago (YYYY-MM-DD). */
+  nextPaymentDate: string;
+  /** Día del mes para recurrencia (1–31). */
+  dayOfMonth: number;
+  /** Último mes pagado, formato YYYY-MM. */
+  lastPaidMonthKey?: string;
+  /** Recordatorio activo para este gasto. */
+  reminderEnabled?: boolean;
+  /** Días antes del pago para avisar (0 = solo el día). */
+  reminderDaysBefore?: number;
+  /** Última fecha en que se envió recordatorio (YYYY-MM-DD). */
+  lastNotifiedKey?: string;
+  createdAt: string;
+}
+
 export interface InjectionAllocation {
   debtId: string;
   debtName: string;
@@ -114,6 +135,11 @@ export interface AppState {
   weekFundWeekKey: string;
   savingsGoals: SavingsGoal[];
   savingsDeposits: SavingsDeposit[];
+  fixedExpenses: FixedExpense[];
+  /** Recordatorios push del navegador para gastos fijos. */
+  fixedExpenseNotificationsEnabled: boolean;
+  /** Nombre del usuario para personalizar la app. */
+  userName: string;
   /** false = muestra bienvenida de primer uso. */
   onboardingDone: boolean;
 }
@@ -132,5 +158,8 @@ export const DEFAULT_APP_STATE: AppState = {
   weekFundWeekKey: "",
   savingsGoals: [],
   savingsDeposits: [],
+  fixedExpenses: [],
+  fixedExpenseNotificationsEnabled: true,
+  userName: "",
   onboardingDone: false,
 };

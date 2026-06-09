@@ -1,8 +1,14 @@
 import {
+  computeNextPaymentDateFromDay,
+  dayOfMonthFromDateKey,
+} from "@/lib/budget/fixedExpenses";
+import { normalizeUserName } from "@/lib/user/displayName";
+import {
   DEFAULT_APP_STATE,
   type AppState,
   type CashInjection,
   type Debt,
+  type FixedExpense,
   type InjectionAllocation,
   type SavingsGoal,
   type WeeklyFundItem,
@@ -32,6 +38,54 @@ function sanitizeSavingsGoals(goals: unknown): SavingsGoal[] {
   return asArray<SavingsGoal>(goals)
     .filter((g) => g && typeof g.name === "string" && g.targetAmount > 0)
     .map((g) => ({ ...g, balance: Math.max(0, g.balance ?? 0) }));
+}
+
+function sanitizeFixedExpenses(expenses: unknown): FixedExpense[] {
+  return asArray<FixedExpense>(expenses)
+    .filter(
+      (e) =>
+        e &&
+        typeof e.name === "string" &&
+        e.amount > 0 &&
+        (typeof e.dayOfMonth === "number" || typeof e.nextPaymentDate === "string")
+    )
+    .map((e) => {
+      const dayOfMonth = Math.min(
+        31,
+        Math.max(
+          1,
+          Math.round(
+            e.dayOfMonth ??
+              (e.nextPaymentDate
+                ? dayOfMonthFromDateKey(e.nextPaymentDate)
+                : 1)
+          )
+        )
+      );
+      const nextPaymentDate =
+        typeof e.nextPaymentDate === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(e.nextPaymentDate)
+          ? e.nextPaymentDate
+          : computeNextPaymentDateFromDay(dayOfMonth);
+
+      const reminderDaysBefore = [0, 1, 3, 7].includes(
+        e.reminderDaysBefore as number
+      )
+        ? (e.reminderDaysBefore as number)
+        : 1;
+
+      return {
+        ...e,
+        dayOfMonth,
+        nextPaymentDate,
+        reminderEnabled: e.reminderEnabled !== false,
+        reminderDaysBefore,
+        lastPaidMonthKey:
+          typeof e.lastPaidMonthKey === "string" ? e.lastPaidMonthKey : undefined,
+        lastNotifiedKey:
+          typeof e.lastNotifiedKey === "string" ? e.lastNotifiedKey : undefined,
+      };
+    });
 }
 
 /** Carga solo campos válidos — nunca mezcla basura de versiones anteriores. */
@@ -79,6 +133,13 @@ export function sanitizeAppState(raw: unknown): AppState {
     weekFundWeekKey: parsed.weekFundWeekKey ?? "",
     savingsGoals: sanitizeSavingsGoals(parsed.savingsGoals),
     savingsDeposits: asArray(parsed.savingsDeposits),
+    fixedExpenses: sanitizeFixedExpenses(parsed.fixedExpenses),
+    fixedExpenseNotificationsEnabled:
+      parsed.fixedExpenseNotificationsEnabled !== false,
+    userName:
+      typeof parsed.userName === "string"
+        ? normalizeUserName(parsed.userName)
+        : "",
     onboardingDone: parsed.onboardingDone === true,
   };
 }

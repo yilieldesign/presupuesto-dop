@@ -12,13 +12,17 @@ import {
 import type {
   AppState,
   ExpenseCategory,
+  FixedExpense,
   TransactionType,
   WeeklyFundItem,
 } from "@/types";
+import type { NotificationPermissionState } from "@/lib/notifications/browser";
+import { getMonthlyFixedTotal } from "@/lib/budget/fixedExpenses";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { DebtProgressBar } from "./DebtProgressBar";
+import { FixedExpensesCard } from "./FixedExpensesCard";
 import { WeeklyFundCard } from "./WeeklyFundCard";
 
 interface BudgetViewProps {
@@ -31,6 +35,29 @@ interface BudgetViewProps {
     description: string;
   }) => void;
   onResetApp: () => void;
+  onSetUserName: (name: string) => void;
+  notificationPermission: NotificationPermissionState;
+  onAddFixedExpense: (expense: {
+    name: string;
+    amount: number;
+    category: ExpenseCategory;
+    nextPaymentDate: string;
+    reminderEnabled?: boolean;
+    reminderDaysBefore?: number;
+  }) => void;
+  onUpdateFixedExpense: (
+    id: string,
+    patch: Partial<
+      Pick<
+        FixedExpense,
+        "nextPaymentDate" | "reminderEnabled" | "reminderDaysBefore"
+      >
+    >
+  ) => void;
+  onRemoveFixedExpense: (id: string) => void;
+  onMarkFixedExpensePaid: (id: string) => void;
+  onEnableNotifications: () => Promise<NotificationPermissionState>;
+  onSetFixedExpenseNotificationsEnabled: (enabled: boolean) => void;
 }
 
 export function BudgetView({
@@ -38,6 +65,14 @@ export function BudgetView({
   onSetWeeklyFundItems,
   onAddTransaction,
   onResetApp,
+  onSetUserName,
+  notificationPermission,
+  onAddFixedExpense,
+  onUpdateFixedExpense,
+  onRemoveFixedExpense,
+  onMarkFixedExpensePaid,
+  onEnableNotifications,
+  onSetFixedExpenseNotificationsEnabled,
 }: BudgetViewProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [txType, setTxType] = useState<"expense" | "income">("expense");
@@ -48,6 +83,7 @@ export function BudgetView({
   const weeklyIncome = getWeeklyIncome(state.transactions);
   const weeklyExpenses = getWeeklyExpenses(state.transactions);
   const injected = getTotalInjectedToDebts(state.injections);
+  const monthlyFixed = getMonthlyFixedTotal(state.fixedExpenses);
   const weeklyNet = weeklyIncome - weeklyExpenses - injected;
 
   const recent = state.transactions.slice(0, 8);
@@ -78,6 +114,18 @@ export function BudgetView({
         onSaveItems={onSetWeeklyFundItems}
       />
 
+      <FixedExpensesCard
+        expenses={state.fixedExpenses}
+        notificationsEnabled={state.fixedExpenseNotificationsEnabled}
+        notificationPermission={notificationPermission}
+        onAdd={onAddFixedExpense}
+        onUpdate={onUpdateFixedExpense}
+        onRemove={onRemoveFixedExpense}
+        onMarkPaid={onMarkFixedExpensePaid}
+        onEnableNotifications={onEnableNotifications}
+        onSetNotificationsEnabled={onSetFixedExpenseNotificationsEnabled}
+      />
+
       <div className="grid grid-cols-3 gap-2">
         <Card padding="sm" className="text-center">
           <p className="text-[10px] text-[var(--ios-muted)]">Ingresos 7d</p>
@@ -106,6 +154,11 @@ export function BudgetView({
         >
           {formatDOP(weeklyNet)}
         </p>
+        {monthlyFixed > 0 && (
+          <p className="mt-1 text-xs text-[var(--ios-muted)]">
+            Compromiso fijo mensual: {formatDOP(monthlyFixed)}
+          </p>
+        )}
       </Card>
 
       <div>
@@ -181,7 +234,24 @@ export function BudgetView({
         <Plus size={28} strokeWidth={2.5} />
       </button>
 
-      <div className="pt-6 pb-2 text-center">
+      <div className="space-y-2 pt-6 pb-2 text-center">
+        <button
+          type="button"
+          onClick={() => {
+            const next = window.prompt(
+              "Tu nombre",
+              state.userName || ""
+            );
+            if (next !== null && next.trim()) {
+              onSetUserName(next.trim());
+            }
+          }}
+          className="block w-full text-xs text-[var(--ios-muted)] underline-offset-2 hover:underline"
+        >
+          {state.userName
+            ? `Cambiar nombre (${state.userName})`
+            : "Agregar tu nombre"}
+        </button>
         <button
           type="button"
           onClick={() => {
