@@ -292,79 +292,94 @@ export function BudgetView({
       </div>
 
       {sheetOpen && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/40 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          onClick={closeSheet}
+        >
           <div
-            className="w-full max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-[var(--ios-card)] p-5"
-            style={{ paddingBottom: "max(20px, var(--safe-area-bottom))" }}
+            className="flex max-h-[92dvh] min-h-[min(92dvh,640px)] w-full flex-col rounded-t-3xl bg-[var(--ios-card)] shadow-2xl"
+            style={{
+              paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+            }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[var(--ios-separator)]" />
-            <h3 className="mb-4 text-lg font-bold">
-              {editingTxId
-                ? "Editar movimiento"
-                : txType === "expense"
-                  ? "Gasto del día"
-                  : "Nuevo ingreso"}
-            </h3>
+            <div className="shrink-0 px-5 pt-3">
+              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ios-separator)]" />
+              <h3 className="text-lg font-bold">
+                {editingTxId
+                  ? "Editar movimiento"
+                  : txType === "expense"
+                    ? "Gasto del día"
+                    : "Nuevo ingreso"}
+              </h3>
+            </div>
 
-            {!editingTxId && (
-              <div className="mb-4 grid grid-cols-2 gap-2">
-                {(["expense", "income"] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTxType(t)}
-                    className={`rounded-xl py-2.5 text-sm font-medium transition-colors ${
-                      txType === t
-                        ? "bg-[var(--ios-tint)] text-white"
-                        : "bg-[var(--ios-bg)] text-[var(--ios-muted)]"
-                    }`}
-                  >
-                    {t === "expense" ? "Gasto" : "Ingreso"}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs text-[var(--ios-muted)]">
-                  Fecha
-                </label>
-                <input
-                  type="date"
-                  value={txDate}
-                  max={toDateKey(new Date())}
-                  onChange={(e) => setTxDate(e.target.value)}
-                  className="w-full rounded-xl border border-[var(--ios-separator)] bg-[var(--ios-bg)] px-4 py-3 text-sm outline-none"
-                />
-              </div>
-              <MoneyInput value={amount} onChange={setAmount} autoFocus />
-              <input
-                type="text"
-                placeholder="Descripción"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full rounded-xl border border-[var(--ios-separator)] bg-[var(--ios-bg)] px-4 py-3 text-sm outline-none"
-              />
-              {txType === "expense" && (
-                <div className="flex flex-wrap gap-2">
-                  {EXPENSE_CATEGORIES.map((c) => (
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+              {!editingTxId && (
+                <div className="mb-4 grid grid-cols-2 gap-2">
+                  {(["expense", "income"] as const).map((t) => (
                     <button
-                      key={c.id}
+                      key={t}
                       type="button"
-                      onClick={() => setCategory(c.id)}
-                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                        category === c.id
+                      onClick={() => setTxType(t)}
+                      className={`rounded-xl py-2.5 text-sm font-medium transition-colors ${
+                        txType === t
                           ? "bg-[var(--ios-tint)] text-white"
                           : "bg-[var(--ios-bg)] text-[var(--ios-muted)]"
                       }`}
                     >
-                      {c.label}
+                      {t === "expense" ? "Gasto" : "Ingreso"}
                     </button>
                   ))}
                 </div>
               )}
-              <div className="flex gap-2 pt-2">
+
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--ios-muted)]">
+                    Fecha
+                  </label>
+                  <input
+                    type="date"
+                    value={txDate}
+                    max={toDateKey(new Date())}
+                    onChange={(e) => setTxDate(e.target.value)}
+                    className="w-full rounded-xl border border-[var(--ios-separator)] bg-[var(--ios-bg)] px-4 py-3 text-sm outline-none"
+                  />
+                </div>
+                <MoneyInput value={amount} onChange={setAmount} autoFocus />
+                <input
+                  type="text"
+                  placeholder="Descripción"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--ios-separator)] bg-[var(--ios-bg)] px-4 py-3 text-sm outline-none"
+                />
+                {txType === "expense" && (
+                  <div className="flex flex-wrap gap-2 pb-2">
+                    {EXPENSE_CATEGORIES.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setCategory(c.id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                          category === c.id
+                            ? "bg-[var(--ios-tint)] text-white"
+                            : "bg-[var(--ios-bg)] text-[var(--ios-muted)]"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-[var(--ios-separator)] px-5 pt-4">
+              <div className="flex gap-2">
                 <Button variant="secondary" fullWidth onClick={closeSheet}>
                   Cancelar
                 </Button>
