@@ -1,0 +1,25 @@
+{
+  "name": "Presupuesto DOP",
+  "short_name": "Presupuesto",
+  "description": "Presupuesto semanal, deudas y ahorro en Pesos Dominicanos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f2f7",
+  "theme_color": "#007aff",
+  "orientation": "portrait",
+  "lang": "es-DO",
+  "icons": [
+    {
+      "src": "/apple-icon",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
